@@ -80,12 +80,12 @@ def Xform "World"
     // Three.js: X=right, Y=up, Z=forward
     // USD:      X=forward, Y=left, Z=up
     // Mapping: USD_X = Three_X, USD_Y = -Three_Z, USD_Z = Three_Y
-    // Note: Assumes referenced USD files already have PhysicsRigidBodyAPI applied
+    const kinematicAttr = asset.disableGravity ? '\n        bool physics:kinematicEnabled = true' : ''
     usdContent += `
     def Xform "${usdName}" (
         prepend references = @./assets/${asset.name}/${mainFileName}@
     )
-    {
+    {${kinematicAttr}
         double3 xformOp:translate = (${pos.x}, ${-pos.z}, ${pos.y})
         quatd xformOp:orient = (${usdQuat.w}, ${usdQuat.x}, ${usdQuat.y}, ${usdQuat.z})
         float3 xformOp:scale = (${scl.x}, ${scl.z}, ${scl.y})

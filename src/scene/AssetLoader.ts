@@ -160,7 +160,10 @@ export class AssetLoader {
 
   async loadFromUrl(url: string, name: string, options?: { excludeFromExport?: boolean; translucent?: boolean; locked?: boolean }): Promise<LoadedAsset | null> {
     try {
-      const response = await fetch(url)
+      const response = await fetch(url, { cache: 'no-cache' })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
       const blob = await response.blob()
       const fileName = url.split('/').pop() || 'asset.usd'
       const file = new File([blob], fileName)

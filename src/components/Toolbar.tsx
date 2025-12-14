@@ -83,7 +83,15 @@ export function Toolbar({ onHelpClick }: ToolbarProps) {
     const file = input.files?.[0]
     if (!file || !assetLoader) return
 
+    showNotification(`Importing ${file.name}...`, 'success')
+
     const result = await importScene(file, assetLoader)
+
+    if (!result.success) {
+      showNotification(result.error || 'Import failed', 'error')
+      input.value = ''
+      return
+    }
 
     // Add assets
     for (const asset of result.assets) {
@@ -100,6 +108,7 @@ export function Toolbar({ onHelpClick }: ToolbarProps) {
       setInstruction(result.instruction)
     }
 
+    showNotification(`Imported ${result.assets.length} asset(s)`, 'success')
     input.value = ''
   }
 

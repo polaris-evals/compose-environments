@@ -311,14 +311,18 @@ export function useSceneProvider(): SceneContextValue {
     return box1.intersectsBox(box2)
   }, [])
 
-  const getAssetLocalSize = useCallback((asset: LoadedAsset): THREE.Vector3 => {
+  const getAssetLocalSize = useCallback((asset: LoadedAsset, useRotation?: THREE.Quaternion): THREE.Vector3 => {
     // Save current transform
     const savedPos = asset.object.position.clone()
-    const savedRot = asset.object.rotation.clone()
+    const savedQuat = asset.object.quaternion.clone()
 
-    // Reset to origin with no rotation to get local bounds
+    // Reset to origin, optionally with a specific rotation
     asset.object.position.set(0, 0, 0)
-    asset.object.rotation.set(0, 0, 0)
+    if (useRotation) {
+      asset.object.quaternion.copy(useRotation)
+    } else {
+      asset.object.quaternion.set(0, 0, 0, 1) // identity
+    }
 
     const box = new THREE.Box3().setFromObject(asset.object)
     const size = new THREE.Vector3()
@@ -326,7 +330,7 @@ export function useSceneProvider(): SceneContextValue {
 
     // Restore transform
     asset.object.position.copy(savedPos)
-    asset.object.rotation.copy(savedRot)
+    asset.object.quaternion.copy(savedQuat)
 
     return size
   }, [])
@@ -371,8 +375,11 @@ export function useSceneProvider(): SceneContextValue {
     for (const asset of dynamicAssets) {
       let placed = false
 
-      // Get asset size to calculate valid spawn range
-      const assetSize = getAssetLocalSize(asset)
+      // Get the saved rotation for this asset
+      const savedPose = poses.get(asset.id)
+
+      // Get asset size with the saved rotation applied (so bounds calculation accounts for orientation)
+      const assetSize = getAssetLocalSize(asset, savedPose?.quaternion)
       // Use max of X/Z for horizontal extent since we rotate around Y
       const maxHorizontalExtent = Math.max(assetSize.x, assetSize.z) / 2
       const verticalExtent = assetSize.y / 2
@@ -403,12 +410,18 @@ export function useSceneProvider(): SceneContextValue {
           z = -((spawnBounds.minY + spawnBounds.maxY) / 2)
         }
 
-        // Random rotation around Y axis (up axis in Three.js)
+        // Random rotation around Y axis (up axis in Three.js), relative to saved orientation
         const rotY = Math.random() * Math.PI * 2
+        const randomYRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY)
 
         // Apply transform
         asset.object.position.set(x, y, z)
-        asset.object.rotation.set(0, rotY, 0)
+        if (savedPose) {
+          // Apply random Y rotation on top of the saved orientation
+          asset.object.quaternion.copy(savedPose.quaternion).premultiply(randomYRotation)
+        } else {
+          asset.object.rotation.set(0, rotY, 0)
+        }
 
         // Check collision with placed assets
         const assetBox = getAssetBoundingBox(asset)

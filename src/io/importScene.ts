@@ -28,32 +28,60 @@ interface InitialConditionsFile {
 }
 
 export interface ImportResult {
+  success: boolean
   assets: LoadedAsset[]
   savedConditions: SavedCondition[]
   instruction: string
+  error?: string
 }
 
 export async function importScene(
   zipFile: File,
   assetLoader: AssetLoader
 ): Promise<ImportResult> {
-  const zip = await JSZip.loadAsync(zipFile)
+  console.log('[Import] Starting import of:', zipFile.name)
+
+  let zip: JSZip
+  try {
+    zip = await JSZip.loadAsync(zipFile)
+    console.log('[Import] ZIP loaded, files:', Object.keys(zip.files))
+  } catch (e) {
+    const msg = `Failed to read ZIP file: ${e instanceof Error ? e.message : String(e)}`
+    console.error('[Import]', msg)
+    return { success: false, assets: [], savedConditions: [], instruction: '', error: msg }
+  }
 
   // Try to read scene.json first (new format)
   const configFile = zip.file('scene.json')
   let assets: LoadedAsset[]
 
-  if (configFile) {
-    assets = await importFromSceneJson(zip, configFile, assetLoader)
-  } else {
-    // Fall back to discovering assets from folder structure (legacy format)
-    assets = await importFromFolderStructure(zip, assetLoader)
+  try {
+    if (configFile) {
+      console.log('[Import] Found scene.json, using new format')
+      assets = await importFromSceneJson(zip, configFile, assetLoader)
+    } else {
+      // Fall back to discovering assets from folder structure (legacy format)
+      console.log('[Import] No scene.json, using folder structure')
+      assets = await importFromFolderStructure(zip, assetLoader)
+    }
+    console.log('[Import] Loaded assets:', assets.map(a => a.name))
+  } catch (e) {
+    const msg = `Failed to load assets: ${e instanceof Error ? e.message : String(e)}`
+    console.error('[Import]', msg)
+    return { success: false, assets: [], savedConditions: [], instruction: '', error: msg }
+  }
+
+  if (assets.length === 0) {
+    const msg = 'No assets found in ZIP. Expected assets/ folder with USD, USDZ, GLTF, or GLB files.'
+    console.warn('[Import]', msg)
+    return { success: false, assets: [], savedConditions: [], instruction: '', error: msg }
   }
 
   // Load initial conditions if present
   const { savedConditions, instruction } = await loadInitialConditions(zip, assets)
+  console.log('[Import] Import complete:', assets.length, 'assets,', savedConditions.length, 'conditions')
 
-  return { assets, savedConditions, instruction }
+  return { success: true, assets, savedConditions, instruction }
 }
 
 async function loadInitialConditions(
@@ -165,13 +193,58 @@ async function importFromFolderStructure(
   zip: JSZip,
   assetLoader: AssetLoader
 ): Promise<LoadedAsset[]> {
-  // Try to parse scene.usda for transforms
-  const usdaFile = zip.file('scene.usda')
+  // Try to find a USD scene file at root level (scene.usda, scene.usd, or any .usd/.usda file)
+  let usdaFile = zip.file('scene.usda') || zip.file('scene.usd')
+
+  // If not found, look for any USD file at root level
+  if (!usdaFile) {
+    for (const [path, entry] of Object.entries(zip.files)) {
+      if (!path.includes('/') && (path.endsWith('.usd') || path.endsWith('.usda'))) {
+        usdaFile = entry
+        console.log('[Import] Found USD scene file:', path)
+        break
+      }
+    }
+  }
+
   const transforms = new Map<string, UsdTransform>()
 
   if (usdaFile) {
     const usdaContent = await usdaFile.async('text')
-    parseUsdaTransforms(usdaContent, transforms)
+    // Check if it's binary USD (crate format) - starts with "PXR-USDC"
+    if (usdaContent.startsWith('PXR-USDC')) {
+      console.warn('[Import] Binary USD (crate) format detected - will try initial_conditions.json for transforms')
+    } else {
+      parseUsdaTransforms(usdaContent, transforms)
+      console.log('[Import] Parsed transforms for:', [...transforms.keys()])
+    }
+  }
+
+  // If no transforms from USD, try to get first pose from initial_conditions.json
+  if (transforms.size === 0) {
+    const initialConditionsFile = zip.file('initial_conditions.json')
+    if (initialConditionsFile) {
+      try {
+        const content = await initialConditionsFile.async('text')
+        const data: InitialConditionsFile = JSON.parse(content)
+        if (data.poses && data.poses.length > 0) {
+          const firstPose = data.poses[0]
+          for (const [name, values] of Object.entries(firstPose)) {
+            // values: [x, y, z, qx, qy, qz, qw] in USD coordinates (Z-up)
+            transforms.set(name, {
+              translate: { x: values[0], y: values[1], z: values[2] },
+              orient: { x: values[3], y: values[4], z: values[5], w: values[6] },
+              rotate: null,
+              scale: { x: 1, y: 1, z: 1 },
+              kinematic: false,
+            })
+          }
+          console.log('[Import] Using first pose from initial_conditions.json for transforms:', [...transforms.keys()])
+        }
+      } catch (e) {
+        console.warn('[Import] Failed to parse initial_conditions.json:', e)
+      }
+    }
   }
 
   // Discover asset folders under assets/
@@ -318,6 +391,7 @@ async function loadAssetFromZip(
   assetName: string,
   assetLoader: AssetLoader
 ): Promise<LoadedAsset | null> {
+  console.log('[Import] Loading asset:', assetName)
   const files = new Map<string, File>()
   const assetPath = `assets/${assetName}/`
 
@@ -341,10 +415,16 @@ async function loadAssetFromZip(
   await Promise.all(filePromises)
 
   if (files.size === 0) {
+    console.warn('[Import] No files found for asset:', assetName)
     return null
   }
 
-  return assetLoader.loadFromFiles(files, assetName)
+  console.log('[Import] Found', files.size, 'files for', assetName, ':', [...files.keys()])
+  const asset = await assetLoader.loadFromFiles(files, assetName)
+  if (!asset) {
+    console.warn('[Import] AssetLoader returned null for:', assetName)
+  }
+  return asset
 }
 
 function getMimeType(filename: string): string {

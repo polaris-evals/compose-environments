@@ -74,7 +74,8 @@ export function Viewport() {
         if (entry) {
           if (entry.isDirectory) {
             folderName = entry.name
-            await traverseDirectory(entry as FileSystemDirectoryEntry, files, '')
+            // Include folder name in paths to match webkitRelativePath format from file input
+            await traverseDirectory(entry as FileSystemDirectoryEntry, files, folderName)
           } else if (entry.isFile) {
             const file = item.getAsFile()
             if (file) {
