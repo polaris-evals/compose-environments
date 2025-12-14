@@ -1,0 +1,23 @@
+{
+  "name": "compose-environments",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "preact": "^10.19.3",
+    "three": "^0.166.0",
+    "three-usdz-loader": "^1.0.9"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.8.2",
+    "@types/three": "^0.166.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11"
+  }
+}
