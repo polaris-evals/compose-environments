@@ -496,16 +496,79 @@ html, body, #app {
   margin-bottom: 8px;
 }
 
-.saved-conditions-counter {
+.bounds-hint {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.editing-mode-indicator {
+  padding: 10px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  margin-bottom: 12px;
+  border-left: 3px solid var(--accent);
+}
+
+.editing-mode-indicator span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editing-hint {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.saved-conditions-section {
+  margin-bottom: 12px;
+}
+
+.saved-conditions-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px;
   background: var(--bg-tertiary);
   border-radius: 4px;
-  margin-bottom: 12px;
+}
+
+.conditions-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
   font-size: 12px;
+  cursor: default;
+  padding: 0;
+}
+
+.conditions-toggle.has-conditions {
+  cursor: pointer;
   color: var(--text-primary);
+}
+
+.conditions-toggle.has-conditions:hover {
+  color: var(--accent);
+}
+
+.conditions-toggle:disabled {
+  opacity: 0.6;
+}
+
+.toggle-arrow {
+  font-size: 8px;
+  width: 10px;
 }
 
 .clear-conditions-btn {
@@ -520,6 +583,67 @@ html, body, #app {
 }
 
 .clear-conditions-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.conditions-list {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.condition-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.condition-item:last-child {
+  border-bottom: none;
+}
+
+.condition-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.condition-name {
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.condition-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.condition-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.condition-btn.load:hover {
+  color: #28a745;
+  border-color: #28a745;
+}
+
+.condition-btn.delete {
+  padding: 2px 5px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.condition-btn.delete:hover {
   color: var(--accent);
   border-color: var(--accent);
 }

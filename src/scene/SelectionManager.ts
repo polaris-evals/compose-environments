@@ -11,6 +11,20 @@ export interface TransformChangeEvent {
   scale: THREE.Vector3
 }
 
+export interface TransformDragEvent {
+  assetId: string
+  before: {
+    position: { x: number; y: number; z: number }
+    rotation: { x: number; y: number; z: number }
+    scale: { x: number; y: number; z: number }
+  }
+  after: {
+    position: { x: number; y: number; z: number }
+    rotation: { x: number; y: number; z: number }
+    scale: { x: number; y: number; z: number }
+  }
+}
+
 export class SelectionManager {
   private scene: THREE.Scene
   private camera: THREE.Camera
@@ -27,6 +41,15 @@ export class SelectionManager {
   private boundsMesh: THREE.Mesh | null = null
   private onBoundsChange: ((mesh: THREE.Mesh) => void) | null = null
   private isRandomizeMode = false
+  private isBoundsSelected = false
+  private onTransformDragEnd: ((event: TransformDragEvent) => void) | null = null
+  private dragStartTransform: {
+    position: { x: number; y: number; z: number }
+    rotation: { x: number; y: number; z: number }
+    scale: { x: number; y: number; z: number }
+  } | null = null
+  private wasDragging = false
+  private mouseDownPos: { x: number; y: number } | null = null
 
   constructor(
     scene: THREE.Scene,
@@ -50,6 +73,46 @@ export class SelectionManager {
     // Disable orbit controls while transforming
     this.transformControls.addEventListener('dragging-changed', (event) => {
       this.orbitControls.enabled = !event.value
+
+      // Track that a drag occurred (to prevent click from changing selection)
+      if (event.value) {
+        this.wasDragging = true
+      }
+
+      // Track asset transforms (works in both normal and randomize mode when an asset is selected)
+      if (this.selectedAsset && (!this.isRandomizeMode || !this.isBoundsSelected)) {
+        if (event.value) {
+          // Drag started - capture initial transform
+          const obj = this.selectedAsset.object
+          this.dragStartTransform = {
+            position: { x: obj.position.x, y: obj.position.y, z: obj.position.z },
+            rotation: {
+              x: obj.rotation.x * (180 / Math.PI),
+              y: obj.rotation.y * (180 / Math.PI),
+              z: obj.rotation.z * (180 / Math.PI),
+            },
+            scale: { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z },
+          }
+        } else if (this.dragStartTransform && this.onTransformDragEnd) {
+          // Drag ended - fire callback with before/after
+          const obj = this.selectedAsset.object
+          const after = {
+            position: { x: obj.position.x, y: obj.position.y, z: obj.position.z },
+            rotation: {
+              x: obj.rotation.x * (180 / Math.PI),
+              y: obj.rotation.y * (180 / Math.PI),
+              z: obj.rotation.z * (180 / Math.PI),
+            },
+            scale: { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z },
+          }
+          this.onTransformDragEnd({
+            assetId: this.selectedAsset.id,
+            before: this.dragStartTransform,
+            after,
+          })
+          this.dragStartTransform = null
+        }
+      }
     })
 
     // Emit transform changes and update highlight
@@ -74,7 +137,8 @@ export class SelectionManager {
       }
     })
 
-    // Listen for clicks
+    // Listen for mouse events to detect intentional clicks vs drags
+    renderer.domElement.addEventListener('mousedown', this.onMouseDown)
     renderer.domElement.addEventListener('click', this.onClick)
 
     // Keyboard shortcuts
@@ -91,6 +155,10 @@ export class SelectionManager {
 
   setOnTransformChange(callback: (event: TransformChangeEvent) => void): void {
     this.onTransformChange = callback
+  }
+
+  setOnTransformDragEnd(callback: (event: TransformDragEvent) => void): void {
+    this.onTransformDragEnd = callback
   }
 
   select(asset: LoadedAsset | null): void {
@@ -148,6 +216,7 @@ export class SelectionManager {
     this.boundsMesh = mesh
     this.onBoundsChange = onBoundsChange
     this.isRandomizeMode = true
+    this.isBoundsSelected = true
     this.transformControls.attach(mesh)
     this.transformControls.setMode('translate')
   }
@@ -156,7 +225,31 @@ export class SelectionManager {
     this.boundsMesh = null
     this.onBoundsChange = null
     this.isRandomizeMode = false
+    this.isBoundsSelected = false
     this.transformControls.detach()
+  }
+
+  selectBounds(): void {
+    if (!this.isRandomizeMode || !this.boundsMesh) return
+
+    // Remove asset highlight
+    if (this.highlightBox) {
+      this.scene.remove(this.highlightBox)
+      this.highlightBox.dispose()
+      this.highlightBox = null
+    }
+
+    this.selectedAsset = null
+    this.isBoundsSelected = true
+    this.transformControls.attach(this.boundsMesh)
+
+    if (this.onSelectionChange) {
+      this.onSelectionChange(null)
+    }
+  }
+
+  isBoundsCurrentlySelected(): boolean {
+    return this.isRandomizeMode && this.isBoundsSelected
   }
 
   setBoundsTransformMode(mode: 'translate' | 'rotate' | 'scale'): void {
@@ -165,12 +258,33 @@ export class SelectionManager {
     }
   }
 
+  private onMouseDown = (event: MouseEvent): void => {
+    this.mouseDownPos = { x: event.clientX, y: event.clientY }
+    this.wasDragging = false
+  }
+
   private onClick = (event: MouseEvent): void => {
     // Ignore if we're dragging the transform controls
     if (this.transformControls.dragging) return
 
-    // Ignore clicks in randomize mode - no asset selection allowed
-    if (this.isRandomizeMode) return
+    // Ignore if a drag occurred (transform or orbit controls)
+    if (this.wasDragging) {
+      this.wasDragging = false
+      return
+    }
+
+    // Check if mouse moved significantly from mousedown (orbit drag detection)
+    if (this.mouseDownPos) {
+      const dx = event.clientX - this.mouseDownPos.x
+      const dy = event.clientY - this.mouseDownPos.y
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      if (distance > 5) {
+        // Mouse moved too much, this was a drag not a click
+        this.mouseDownPos = null
+        return
+      }
+    }
+    this.mouseDownPos = null
 
     const rect = this.renderer.domElement.getBoundingClientRect()
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
@@ -201,13 +315,23 @@ export class SelectionManager {
           if (child === hitObject) found = true
         })
         if (found) {
+          // In randomize mode, switch from bounds to asset
+          if (this.isRandomizeMode) {
+            this.isBoundsSelected = false
+          }
           this.select(asset)
           return
         }
       }
     } else {
-      // Clicked on nothing - deselect
-      this.select(null)
+      // Clicked on nothing
+      if (this.isRandomizeMode) {
+        // In randomize mode, clicking empty space returns to bounds selection
+        this.selectBounds()
+      } else {
+        // Normal mode - deselect
+        this.select(null)
+      }
     }
   }
 
@@ -236,6 +360,7 @@ export class SelectionManager {
   }
 
   dispose(): void {
+    this.renderer.domElement.removeEventListener('mousedown', this.onMouseDown)
     this.renderer.domElement.removeEventListener('click', this.onClick)
     window.removeEventListener('keydown', this.onKeyDown)
     this.transformControls.dispose()
