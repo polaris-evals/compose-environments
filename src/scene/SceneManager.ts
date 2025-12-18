@@ -75,7 +75,7 @@ export class SceneManager {
 
     // Directional light (sun)
     const directional = new THREE.DirectionalLight(0xffffff, 0.8)
-    directional.position.set(10, 20, 10)
+    directional.position.set(-15, 20, 5)
     directional.castShadow = true
     directional.shadow.mapSize.width = 2048
     directional.shadow.mapSize.height = 2048
